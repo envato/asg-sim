@@ -117,10 +117,10 @@ def run_batch(path, batch_name, procs=6):
     out_dir = os.path.join(path, 'output')
     out_file_path = os.path.join(out_dir, batch_name)
     if os.path.isfile(out_file_path):
-        print 'Skipping', batch_name
+        print('Skipping', batch_name)
         return
     else:
-        print 'Running', batch_name
+        print('Running', batch_name)
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
     with open(os.path.join(in_dir, batch_name), 'r') as in_file:
@@ -155,7 +155,7 @@ def load_results(path):
 if __name__ == '__main__':
     usage = 'Usage: python -m asgsim.batches <generate-auto|generate-static|run> path [procs]'
     if len(sys.argv) < 3:
-        print usage
+        print(usage)
         exit(1)
     task = sys.argv[1]
     path = sys.argv[2]
@@ -163,14 +163,14 @@ if __name__ == '__main__':
     if len(sys.argv) == 4:
         procs = int(sys.argv[3])
     if sys.argv[1] == 'generate-auto':
-        print 'Generating autoscaling jobs in', path
+        print('Generating autoscaling jobs in', path)
         generate_autoscaling_jobs(sys.argv[2])
     elif sys.argv[1] == 'generate-static':
-        print 'Generating static jobs in', path
+        print('Generating static jobs in', path)
         generate_static_jobs(sys.argv[2])
     elif sys.argv[1] == 'run':
-        print 'Running jobs in %s with %d processes' % (path, procs)
+        print('Running jobs in %s with %d processes' % (path, procs))
         run_batches(sys.argv[2], procs=procs)
     else:
-        print usage
+        print(usage)
         exit(1)

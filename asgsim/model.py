@@ -53,8 +53,8 @@ class Alarm(object):
 
     def averaged_metric(self):
         while len(self.averages) < len(self.metric) / self.period_duration:
-            start = len(self.averages) * self.period_duration
-            end = start + self.period_duration
+            start = int(len(self.averages) * self.period_duration)
+            end = int(start + self.period_duration)
             self.averages.append(mean(self.metric[start:end]))
         return self.averages[-self.period_count:]
 
