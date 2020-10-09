@@ -16,16 +16,40 @@ class ScalingPolicy(object):
 
     # Only ChangeInCapacity is implemented
 
-    def __init__(self, change, cooldown):
-        self.change = change
+    def __init__(self, up_change, down_change, cooldown, max_size, min_size, initial):
+        self.up_change = up_change
+        self.down_change = down_change
         # both last_fired_time and cooldown are in "ticks"
         self.last_fired_time = -cooldown
         self.cooldown = cooldown
+        self.desired_count = initial
+        self.max = max_size
+        self.min = min_size
 
-    def maybe_scale(self, time):
+    def maybe_scale_up(self, time):
+        if self.max and self.desired_count >= self.max:
+            return 0
+
+        scale_amount = self.maybe_scale(time, self.up_change)
+        if self.max and self.desired_count + scale_amount > self.max:
+            scale_amount = self.desired_count - self.max
+        self.desired_count += scale_amount
+        return scale_amount
+    
+    def maybe_scale_down(self, time):
+        if self.min and self.desired_count <= self.min:
+            return 0
+
+        scale_amount = self.maybe_scale(time, self.down_change)
+        if self.min and self.desired_count - scale_amount < self.min:
+            scale_amount = self.desired_count - self.min
+        self.desired_count -= scale_amount
+        return scale_amount
+
+    def maybe_scale(self, time, change):
         if (self.last_fired_time + self.cooldown) <= time:
             self.last_fired_time = time
-            return self.change
+            return change
         else:
             return 0
 
@@ -143,7 +167,7 @@ class Model(object):
         # Config
         defaults = dict(builds_per_hour=10.0, build_run_time=300, initial_builder_count=1,
                         builder_boot_time=300, sec_per_tick=10, autoscale=False,
-                        initial_build_count=0, builds_per_hour_fn=self.CONSTANT)
+                        initial_build_count=0, builds_per_hour_fn=self.CONSTANT, max_size=None, min_size=None)
         self.__dict__.update(defaults)
         self.__dict__.update(**kwargs)
         self.build_run_time_ticks = self.build_run_time / self.sec_per_tick
@@ -173,8 +197,7 @@ class Model(object):
                                         self.scale_down_threshold, Alarm.GT,
                                         self.alarm_period_duration_ticks,
                                         self.scale_down_alarm_period_count)
-            self.scale_up_policy = ScalingPolicy(self.scale_up_change, self.builder_boot_time_ticks + self.alarm_period_duration_ticks)
-            self.scale_down_policy = ScalingPolicy(self.scale_down_change, self.build_run_time_ticks + self.alarm_period_duration_ticks)
+            self.scale_policy = ScalingPolicy(self.scale_up_change, self.scale_down_change, self.builder_boot_time_ticks + self.alarm_period_duration_ticks, self.max_size, self.min_size, self.initial_builder_count)
 
         # Boot initial builders instantly
         self.boot_builders(self.initial_builder_count, instantly=True)
@@ -211,7 +234,7 @@ class Model(object):
         return (1 / (2 * u)) * (r / (1 - r)) * self.sec_per_tick
 
     def queue_times(self):
-        return [(b.started_time - b.queued_time) * self.sec_per_tick for b in self.finished_builds]
+        return [(b.started_time - b.queued_time) * float(self.sec_per_tick) for b in self.finished_builds]
 
     def mean_queue_time(self):
         return mean(self.queue_times())
@@ -227,6 +250,9 @@ class Model(object):
 
     def mean_unused_builders(self):
         return mean([t - u for u, t in zip(self.builders_in_use, self.builders_total)])
+
+    def max_build_queue_length(self):
+        return max(self.build_queue_length)
 
     def boot_builders(self, count, instantly=False):
         if instantly:
@@ -280,10 +306,10 @@ class Model(object):
         # Alarm states can only change on new periods
         if self.ticks % self.alarm_period_duration_ticks == 0:
             if self.scale_up_alarm.state() == Alarm.ALARM:
-                boot_count = self.scale_up_policy.maybe_scale(self.ticks)
+                boot_count = self.scale_policy.maybe_scale_up(self.ticks)
                 self.boot_builders(boot_count)
             if self.scale_down_alarm.state() == Alarm.ALARM:
-                shutdown_count = self.scale_down_policy.maybe_scale(self.ticks)
+                shutdown_count = self.scale_policy.maybe_scale_down(self.ticks)
                 self.shutdown_builders(shutdown_count)
 
     def advance(self, ticks):
